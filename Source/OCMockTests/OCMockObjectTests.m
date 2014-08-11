@@ -1,64 +1,72 @@
-//---------------------------------------------------------------------------------------
-//  $Id$
-//  Copyright (c) 2004-2010 by Mulle Kybernetik. See License file for details.
-//---------------------------------------------------------------------------------------
+/*
+ *  Copyright (c) 2004-2014 Erik Doernenburg and contributors
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may
+ *  not use these files except in compliance with the License. You may obtain
+ *  a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ *  License for the specific language governing permissions and limitations
+ *  under the License.
+ */
 
+#import <XCTest/XCTest.h>
 #import <OCMock/OCMock.h>
-#import "OCMockObjectTests.h"
+
 
 // --------------------------------------------------------------------------------------
 //	Helper classes and protocols for testing
 // --------------------------------------------------------------------------------------
 
-@protocol TestProtocol
-- (int)primitiveValue;
-@optional
-- (id)objectValue;
+@interface TestClassWithSelectorMethod : NSObject
+
+- (void)doWithSelector:(SEL)aSelector;
+
 @end
 
-@protocol ProtocolWithTypeQualifierMethod
-- (void)aSpecialMethod:(byref in void *)someArg;
-@end
+@implementation TestClassWithSelectorMethod
 
-
-@interface TestClassThatCallsSelf : NSObject
-- (NSString *)method1;
-- (NSString *)method2;
-@end
-
-@implementation TestClassThatCallsSelf
-
-- (NSString *)method1
+- (void)doWithSelector:(__unused SEL)aSelector
 {
-	id retVal = [self method2];
-	return retVal;
-}
-
-- (NSString *)method2
-{
-	return @"Foo";
 }
 
 @end
 
 
-@interface TestClassWithClassMethod : NSObject
+@interface TestClassWithIntPointerMethod : NSObject
 
-+ (NSString *)method1;
+- (void)returnValueInPointer:(int *)ptr;
 
 @end
 
-@implementation TestClassWithClassMethod
+@implementation TestClassWithIntPointerMethod
 
-+ (NSString *)method1
+- (void)returnValueInPointer:(int *)ptr
 {
-    return @"Foo";
+    *ptr = 555;
 }
 
 @end
 
 
-@interface TestObserver	: NSObject
+@interface TestClassWithProperty : NSObject
+
+@property (nonatomic, retain) NSString *title;
+
+@end
+
+@implementation TestClassWithProperty
+
+@synthesize title;
+
+@end
+
+
+@interface NotificationRecorderForTesting : NSObject
 {
 	@public
 	NSNotification *notification;
@@ -66,23 +74,29 @@
 
 @end
 
-@implementation TestObserver
+@implementation NotificationRecorderForTesting
 
 - (void)dealloc
 {
 	[[NSNotificationCenter defaultCenter] removeObserver:self];
-	[notification release];
-	[super dealloc];
 }
 
 - (void)receiveNotification:(NSNotification *)aNotification
 {
-	notification = [aNotification retain];
+	notification = aNotification;
 }
 
 @end
 
 static NSString *TestNotification = @"TestNotification";
+
+
+@interface OCMockObjectTests : XCTestCase
+{
+	id mock;
+}
+
+@end
 
 
 // --------------------------------------------------------------------------------------
@@ -111,7 +125,7 @@ static NSString *TestNotification = @"TestNotification";
 - (void)testRaisesExceptionWhenUnknownMethodIsCalled
 {
 	[[mock stub] lowercaseString];
-	STAssertThrows([mock uppercaseString], @"Should have raised an exception.");
+	XCTAssertThrows([mock uppercaseString], @"Should have raised an exception.");
 }
 
 
@@ -129,8 +143,6 @@ static NSString *TestNotification = @"TestNotification";
 	[mock hasSuffix:@"bar"];
 }
 
-#if NS_BLOCKS_AVAILABLE
-
 - (void)testAcceptsStubbedMethodWithBlockArgument
 {
 	mock = [OCMockObject mockForClass:[NSArray class]];
@@ -143,23 +155,21 @@ static NSString *TestNotification = @"TestNotification";
 {
 	[[mock stub] hasSuffix:[OCMArg checkWithBlock:^(id value) { return [value isEqualToString:@"foo"]; }]];
 
-	STAssertNoThrow([mock hasSuffix:@"foo"], @"Should not have thrown a exception");   
-	STAssertThrows([mock hasSuffix:@"bar"], @"Should have thrown a exception");   
+	XCTAssertNoThrow([mock hasSuffix:@"foo"], @"Should not have thrown a exception");
+	XCTAssertThrows([mock hasSuffix:@"bar"], @"Should have thrown a exception");
 }
-	
-#endif
+
 
 - (void)testAcceptsStubbedMethodWithNilArgument
 {
 	[[mock stub] hasSuffix:nil];
-	
 	[mock hasSuffix:nil];
 }
 
 - (void)testRaisesExceptionWhenMethodWithWrongArgumentIsCalled
 {
 	[[mock stub] hasSuffix:@"foo"];
-	STAssertThrows([mock hasSuffix:@"xyz"], @"Should have raised an exception.");
+	XCTAssertThrows([mock hasSuffix:@"xyz"], @"Should have raised an exception.");
 }
 
 
@@ -169,27 +179,41 @@ static NSString *TestNotification = @"TestNotification";
 	[mock stringByPaddingToLength:20 withString:@"foo" startingAtIndex:5];
 }
 
-
 - (void)testRaisesExceptionWhenMethodWithOneWrongScalarArgumentIsCalled
 {
 	[[mock stub] stringByPaddingToLength:20 withString:@"foo" startingAtIndex:5];
-	STAssertThrows([mock stringByPaddingToLength:20 withString:@"foo" startingAtIndex:3], @"Should have raised an exception.");	
+	XCTAssertThrows([mock stringByPaddingToLength:20 withString:@"foo" startingAtIndex:3], @"Should have raised an exception.");
 }
+
+
+- (void)testAcceptsStubbedMethodWithSelectorArgument
+{
+    mock = [OCMockObject mockForClass:[TestClassWithSelectorMethod class]];
+    [[mock stub] doWithSelector:@selector(allKeys)];
+    [mock doWithSelector:@selector(allKeys)];
+}
+
+- (void)testRaisesExceptionWhenMethodWithWrongSelectorArgumentIsCalled
+{
+    mock = [OCMockObject mockForClass:[TestClassWithSelectorMethod class]];
+    [[mock stub] doWithSelector:@selector(allKeys)];
+    XCTAssertThrows([mock doWithSelector:@selector(allValues)]);
+}
+
+- (void)testAcceptsStubbedMethodWithAnySelectorArgument
+{
+    mock = [OCMockObject mockForClass:[TestClassWithSelectorMethod class]];
+    [[mock stub] doWithSelector:[OCMArg anySelector]];
+    [mock doWithSelector:@selector(allKeys)];
+}
+
 
 - (void)testAcceptsStubbedMethodWithPointerArgument
 {
-	NSError *error;
-	[[[mock stub] andReturnValue:OCMOCK_VALUE((BOOL){YES})] writeToFile:OCMOCK_ANY atomically:YES encoding:NSMacOSRomanStringEncoding error:&error];
-	
-	STAssertTrue([mock writeToFile:@"foo" atomically:YES encoding:NSMacOSRomanStringEncoding error:&error], nil);
-}
+    NSError __autoreleasing *error;
+	[[[mock stub] andReturnValue:@YES] writeToFile:[OCMArg any] atomically:YES encoding:NSMacOSRomanStringEncoding error:&error];
 
-- (void)testAcceptsStubbedMethodWithAnyPointerArgument
-{
-	NSError *error;
-	[[[mock stub] andReturnValue:OCMOCK_VALUE((BOOL){YES})] writeToFile:OCMOCK_ANY atomically:YES encoding:NSMacOSRomanStringEncoding error:[OCMArg anyPointer]];
-	
-	STAssertTrue([mock writeToFile:@"foo" atomically:YES encoding:NSMacOSRomanStringEncoding error:&error], nil);
+	XCTAssertTrue([mock writeToFile:@"foo" atomically:YES encoding:NSMacOSRomanStringEncoding error:&error]);
 }
 
 - (void)testRaisesExceptionWhenMethodWithWrongPointerArgumentIsCalled
@@ -197,10 +221,49 @@ static NSString *TestNotification = @"TestNotification";
 	NSString *string;
 	NSString *anotherString;
 	NSArray *array;
-	
-	[[mock stub] completePathIntoString:&string caseSensitive:YES matchesIntoArray:&array filterTypes:OCMOCK_ANY];
-	
-	STAssertThrows([mock completePathIntoString:&anotherString caseSensitive:YES matchesIntoArray:&array filterTypes:OCMOCK_ANY], nil);
+
+	[[mock stub] completePathIntoString:&string caseSensitive:YES matchesIntoArray:&array filterTypes:[OCMArg any]];
+
+	XCTAssertThrows([mock completePathIntoString:&anotherString caseSensitive:YES matchesIntoArray:&array filterTypes:[OCMArg any]]);
+}
+
+- (void)testAcceptsStubbedMethodWithAnyPointerArgument
+{
+    [[mock stub] getCharacters:[OCMArg anyPointer]];
+    
+    unichar buffer[10];
+    XCTAssertNoThrow([mock getCharacters:buffer], @"Should have stubbed method.");
+}
+
+
+- (void)testAcceptsStubbedMethodWithMatchingCharPointer
+{
+    char buffer[10] = "foo";
+    [[[mock stub] andReturnValue:@YES] getCString:buffer maxLength:10 encoding:NSASCIIStringEncoding];
+
+    BOOL result = [mock getCString:buffer maxLength:10 encoding:NSASCIIStringEncoding];
+
+    XCTAssertEqual(YES, result, @"Should have stubbed method.");
+}
+
+- (void)testAcceptsStubbedMethodWithAnyPointerArgumentForCharPointer
+{
+
+    [[[mock stub] andReturnValue:@YES] getCString:[OCMArg anyPointer] maxLength:10 encoding:NSASCIIStringEncoding];
+
+    char buffer[10] = "foo";
+    BOOL result = [mock getCString:buffer maxLength:10 encoding:NSASCIIStringEncoding];
+
+    XCTAssertEqual(YES, result, @"Should have stubbed method.");
+}
+
+
+- (void)testAcceptsStubbedMethodWithAnyObjectRefArgument
+{
+    NSError *error;
+    [[[mock stub] andReturnValue:@YES] writeToFile:[OCMArg any] atomically:YES encoding:NSMacOSRomanStringEncoding error:[OCMArg anyObjectRef]];
+
+    XCTAssertTrue([mock writeToFile:@"foo" atomically:YES encoding:NSMacOSRomanStringEncoding error:&error]);
 }
 
 - (void)testAcceptsStubbedMethodWithVoidPointerArgument
@@ -215,23 +278,23 @@ static NSString *TestNotification = @"TestNotification";
 {
 	mock = [OCMockObject mockForClass:[NSMutableData class]];
 	[[mock stub] appendBytes:"foo" length:3];
-	STAssertThrows([mock appendBytes:"bar" length:3], @"Should have raised an exception.");
+	XCTAssertThrows([mock appendBytes:"bar" length:3], @"Should have raised an exception.");
 }
 
 
 - (void)testAcceptsStubbedMethodWithPointerPointerArgument
 {
-	NSError *error = nil;
-	[[mock stub] initWithContentsOfFile:@"foo.txt" encoding:NSASCIIStringEncoding error:&error];	
-	[mock initWithContentsOfFile:@"foo.txt" encoding:NSASCIIStringEncoding error:&error];
+	NSError __autoreleasing *error = nil;
+    [[mock stub] writeToFile:@"foo.txt" atomically:NO encoding:NSASCIIStringEncoding error:&error];
+    [mock writeToFile:@"foo.txt" atomically:NO encoding:NSASCIIStringEncoding error:&error];
 }
 
 
 - (void)testRaisesExceptionWhenMethodWithWrongPointerPointerArgumentIsCalled
 {
 	NSError *error = nil, *error2;
-	[[mock stub] initWithContentsOfFile:@"foo.txt" encoding:NSASCIIStringEncoding error:&error];	
-	STAssertThrows([mock initWithContentsOfFile:@"foo.txt" encoding:NSASCIIStringEncoding error:&error2], @"Should have raised.");
+    [[mock stub] writeToFile:@"foo.txt" atomically:NO encoding:NSASCIIStringEncoding error:&error];
+	XCTAssertThrows([mock writeToFile:@"foo.txt" atomically:NO encoding:NSASCIIStringEncoding error:&error2], @"Should have raised.");
 }
 
 
@@ -248,7 +311,7 @@ static NSString *TestNotification = @"TestNotification";
     NSRange range = NSMakeRange(0,20);
     NSRange otherRange = NSMakeRange(0,10);
 	[[mock stub] substringWithRange:range];
-	STAssertThrows([mock substringWithRange:otherRange], @"Should have raised an exception.");	
+	XCTAssertThrows([mock substringWithRange:otherRange], @"Should have raised an exception.");
 }
 
 
@@ -270,7 +333,7 @@ static NSString *TestNotification = @"TestNotification";
 {
 	id mockArg = [OCMockObject mockForClass:[NSString class]];
 	[[mock stub] stringByAppendingString:mockArg];
-	STAssertThrows([mock stringByAppendingString:@"foo"], @"Should have raised an exception.");
+	XCTAssertThrows([mock stringByAppendingString:@"foo"], @"Should have raised an exception.");
 }
 
 - (void)testRaisesExceptionWhenDifferentMockArgumentIsPassed
@@ -278,7 +341,20 @@ static NSString *TestNotification = @"TestNotification";
 	id expectedArg = [OCMockObject mockForClass:[NSString class]];
 	id otherArg = [OCMockObject mockForClass:[NSString class]];
 	[[mock stub] stringByAppendingString:otherArg];
-	STAssertThrows([mock stringByAppendingString:expectedArg], @"Should have raised an exception.");	
+	XCTAssertThrows([mock stringByAppendingString:expectedArg], @"Should have raised an exception.");
+}
+
+
+- (void)testAcceptsStubbedMethodWithAnyNonObjectArgument
+{
+    [[[mock stub] ignoringNonObjectArgs] rangeOfString:@"foo" options:0];
+    [mock rangeOfString:@"foo" options:NSRegularExpressionSearch];
+}
+
+- (void)testRaisesExceptionWhenMethodWithMixedArgumentsIsCalledWithWrongObjectArgument
+{
+    [[[mock stub] ignoringNonObjectArgs] rangeOfString:@"foo" options:0];
+    XCTAssertThrows([mock rangeOfString:@"bar" options:NSRegularExpressionSearch], @"Should have raised an exception.");
 }
 
 
@@ -288,141 +364,129 @@ static NSString *TestNotification = @"TestNotification";
 
 - (void)testReturnsStubbedReturnValue
 {
-	id returnValue;  
-
 	[[[mock stub] andReturn:@"megamock"] lowercaseString];
-	returnValue = [mock lowercaseString];
-	
-	STAssertEqualObjects(@"megamock", returnValue, @"Should have returned stubbed value.");
-	
+	id returnValue = [mock lowercaseString];
+
+	XCTAssertEqualObjects(@"megamock", returnValue, @"Should have returned stubbed value.");
 }
 
 - (void)testReturnsStubbedIntReturnValue
 {
-    int expectedValue = 42;
-	[[[mock stub] andReturnValue:OCMOCK_VALUE(expectedValue)] intValue];
+	[[[mock stub] andReturnValue:@42] intValue];
 	int returnValue = [mock intValue];
-    
-	STAssertEquals(expectedValue, returnValue, @"Should have returned stubbed value.");
+
+	XCTAssertEqual(42, returnValue, @"Should have returned stubbed value.");
 }
 
 - (void)testRaisesWhenBoxedValueTypesDoNotMatch
 {
-    double expectedValue = 42;
-	[[[mock stub] andReturnValue:OCMOCK_VALUE(expectedValue)] intValue];
-    
-	STAssertThrows([mock intValue], @"Should have raised an exception.");
+	[[[mock stub] andReturnValue:@42.0] intValue];
+
+	XCTAssertThrows([mock intValue], @"Should have raised an exception.");
 }
 
 - (void)testReturnsStubbedNilReturnValue
 {
 	[[[mock stub] andReturn:nil] uppercaseString];
-	
+
 	id returnValue = [mock uppercaseString];
-	
-	STAssertNil(returnValue, @"Should have returned stubbed value, which is nil.");
+
+	XCTAssertNil(returnValue, @"Should have returned stubbed value, which is nil.");
+}
+
+- (void)testReturnsStubbedValueForProperty
+{
+    TestClassWithProperty *myMock = [OCMockObject mockForClass:[TestClassWithProperty class]];
+
+    [[[(id)myMock stub] andReturn:@"stubbed title"] title];
+
+    XCTAssertEqualObjects(@"stubbed title", myMock.title);
 }
 
 
 // --------------------------------------------------------------------------------------
-//	raising exceptions, posting notifications, etc.
+//	beyond stubbing: raising exceptions, posting notifications, etc.
 // --------------------------------------------------------------------------------------
 
 - (void)testRaisesExceptionWhenAskedTo
 {
 	NSException *exception = [NSException exceptionWithName:@"TestException" reason:@"test" userInfo:nil];
 	[[[mock expect] andThrow:exception] lowercaseString];
-	
-	STAssertThrows([mock lowercaseString], @"Should have raised an exception.");
+
+	XCTAssertThrows([mock lowercaseString], @"Should have raised an exception.");
 }
 
 - (void)testPostsNotificationWhenAskedTo
 {
-	TestObserver *observer = [[[TestObserver alloc] init] autorelease];
+	NotificationRecorderForTesting *observer = [[NotificationRecorderForTesting alloc] init];
 	[[NSNotificationCenter defaultCenter] addObserver:observer selector:@selector(receiveNotification:) name:TestNotification object:nil];
-	
+
 	NSNotification *notification = [NSNotification notificationWithName:TestNotification object:self];
 	[[[mock stub] andPost:notification] lowercaseString];
-	
+
 	[mock lowercaseString];
-	
-	STAssertNotNil(observer->notification, @"Should have sent a notification.");
-	STAssertEqualObjects(TestNotification, [observer->notification name], @"Name should match posted one.");
-	STAssertEqualObjects(self, [observer->notification object], @"Object should match posted one.");
+
+	XCTAssertNotNil(observer->notification, @"Should have sent a notification.");
+	XCTAssertEqualObjects(TestNotification, [observer->notification name], @"Name should match posted one.");
+	XCTAssertEqualObjects(self, [observer->notification object], @"Object should match posted one.");
 }
 
-- (void)testPostsNotificationInAddtionToReturningValue
+- (void)testPostsNotificationInAdditionToReturningValue
 {
-	TestObserver *observer = [[[TestObserver alloc] init] autorelease];
+	NotificationRecorderForTesting *observer = [[NotificationRecorderForTesting alloc] init];
 	[[NSNotificationCenter defaultCenter] addObserver:observer selector:@selector(receiveNotification:) name:TestNotification object:nil];
-	
+
 	NSNotification *notification = [NSNotification notificationWithName:TestNotification object:self];
 	[[[[mock stub] andReturn:@"foo"] andPost:notification] lowercaseString];
-	
-	STAssertEqualObjects(@"foo", [mock lowercaseString], @"Should have returned stubbed value.");
-	STAssertNotNil(observer->notification, @"Should have sent a notification.");
+
+	XCTAssertEqualObjects(@"foo", [mock lowercaseString], @"Should have returned stubbed value.");
+	XCTAssertNotNil(observer->notification, @"Should have sent a notification.");
 }
 
 
 - (NSString *)valueForString:(NSString *)aString andMask:(NSStringCompareOptions)mask
 {
-	return [NSString stringWithFormat:@"[%@, %d]", aString, mask];
+	return [NSString stringWithFormat:@"[%@, %ld]", aString, (long)mask];
 }
 
 - (void)testCallsAlternativeMethodAndPassesOriginalArgumentsAndReturnsValue
 {
 	[[[mock stub] andCall:@selector(valueForString:andMask:) onObject:self] commonPrefixWithString:@"FOO" options:NSCaseInsensitiveSearch];
-	
+
 	NSString *returnValue = [mock commonPrefixWithString:@"FOO" options:NSCaseInsensitiveSearch];
-	
-	STAssertEqualObjects(@"[FOO, 1]", returnValue, @"Should have passed and returned invocation.");
+
+	XCTAssertEqualObjects(@"[FOO, 1]", returnValue, @"Should have passed and returned invocation.");
 }
 
-#if NS_BLOCKS_AVAILABLE
 
 - (void)testCallsBlockWhichCanSetUpReturnValue
 {
-	void (^theBlock)(NSInvocation *) = ^(NSInvocation *invocation) 
+	void (^theBlock)(NSInvocation *) = ^(NSInvocation *invocation)
 		{
 			NSString *value;
 			[invocation getArgument:&value atIndex:2];
 			value = [NSString stringWithFormat:@"MOCK %@", value];
 			[invocation setReturnValue:&value];
 		};
-		
+
 	[[[mock stub] andDo:theBlock] stringByAppendingString:[OCMArg any]];
-		
-	STAssertEqualObjects(@"MOCK foo", [mock stringByAppendingString:@"foo"], @"Should have called block.");
-	STAssertEqualObjects(@"MOCK bar", [mock stringByAppendingString:@"bar"], @"Should have called block.");
+
+	XCTAssertEqualObjects(@"MOCK foo", [mock stringByAppendingString:@"foo"], @"Should have called block.");
+	XCTAssertEqualObjects(@"MOCK bar", [mock stringByAppendingString:@"bar"], @"Should have called block.");
 }
 
-#endif
+- (void)testHandlesNilPassedAsBlock
+{
+    [[[mock stub] andDo:nil] stringByAppendingString:[OCMArg any]];
+
+    XCTAssertNoThrow([mock stringByAppendingString:@"foo"], @"Should have done nothing.");
+    XCTAssertNil([mock stringByAppendingString:@"foo"], @"Should have returned default value.");
+}
+
 
 - (void)testThrowsWhenTryingToUseForwardToRealObjectOnNonPartialMock
 {
-	STAssertThrows([[[mock expect] andForwardToRealObject] method2], @"Should have raised and exception.");
-}
-
-- (void)testForwardsToRealObjectWhenSetUpAndCalledOnMock
-{
-	TestClassThatCallsSelf *realObject = [[[TestClassThatCallsSelf alloc] init] autorelease];
-	mock = [OCMockObject partialMockForObject:realObject];
-
-	[[[mock expect] andForwardToRealObject] method2];
-	STAssertEquals(@"Foo", [mock method2], @"Should have called method on real object.");
-
-	[mock verify];
-}
-
-- (void)testForwardsToRealObjectWhenSetUpAndCalledOnRealObject
-{
-	TestClassThatCallsSelf *realObject = [[[TestClassThatCallsSelf alloc] init] autorelease];
-	mock = [OCMockObject partialMockForObject:realObject];
-	
-	[[[mock expect] andForwardToRealObject] method2];
-	STAssertEquals(@"Foo", [realObject method2], @"Should have called method on real object.");
-	
-	[mock verify];
+	XCTAssertThrows([[[mock expect] andForwardToRealObject] name], @"Should have raised and exception.");
 }
 
 
@@ -432,19 +496,32 @@ static NSString *TestNotification = @"TestNotification";
 
 - (void)testReturnsValuesInPassByReferenceArguments
 {
-	NSString *expectedName = [NSString stringWithString:@"Test"];
+	NSString *expectedName = @"Test";
 	NSArray *expectedArray = [NSArray array];
-	
-	[[mock expect] completePathIntoString:[OCMArg setTo:expectedName] caseSensitive:YES 
-						 matchesIntoArray:[OCMArg setTo:expectedArray] filterTypes:OCMOCK_ANY];
-	
+
+	[[mock expect] completePathIntoString:[OCMArg setTo:expectedName] caseSensitive:YES
+						 matchesIntoArray:[OCMArg setTo:expectedArray] filterTypes:[OCMArg any]];
+
 	NSString *actualName = nil;
 	NSArray *actualArray = nil;
 	[mock completePathIntoString:&actualName caseSensitive:YES matchesIntoArray:&actualArray filterTypes:nil];
 
-	STAssertNoThrow([mock verify], @"An unexpected exception was thrown");
-	STAssertEqualObjects(expectedName, actualName, @"The two string objects should be equal");
-	STAssertEqualObjects(expectedArray, actualArray, @"The two array objects should be equal");
+	XCTAssertNoThrow([mock verify], @"An unexpected exception was thrown");
+	XCTAssertEqualObjects(expectedName, actualName, @"The two string objects should be equal");
+	XCTAssertEqualObjects(expectedArray, actualArray, @"The two array objects should be equal");
+}
+
+
+- (void)testReturnsValuesInNonObjectPassByReferenceArguments
+{
+    mock = [OCMockObject mockForClass:[TestClassWithIntPointerMethod class]];
+    [[mock stub] returnValueInPointer:[OCMArg setToValue:@1234]];
+
+    int actualValue = 0;
+    [mock returnValueInPointer:&actualValue];
+
+    XCTAssertEqual(1234, actualValue, @"Should have returned value via pass by ref argument.");
+
 }
 
 
@@ -461,12 +538,10 @@ static NSString *TestNotification = @"TestNotification";
 
 - (void)testAcceptsExpectedMethodAndReturnsValue
 {
-	id returnValue;
-
 	[[[mock expect] andReturn:@"Objective-C"] lowercaseString];
-	returnValue = [mock lowercaseString];
+	id returnValue = [mock lowercaseString];
 
-	STAssertEqualObjects(@"Objective-C", returnValue, @"Should have returned stubbed value.");
+	XCTAssertEqualObjects(@"Objective-C", returnValue, @"Should have returned stubbed value.");
 }
 
 
@@ -474,7 +549,7 @@ static NSString *TestNotification = @"TestNotification";
 {
 	[[mock expect] lowercaseString];
 	[[mock expect] uppercaseString];
-	
+
 	[mock lowercaseString];
 	[mock uppercaseString];
 }
@@ -484,7 +559,7 @@ static NSString *TestNotification = @"TestNotification";
 {
 	[[mock expect] lowercaseString];
 	[[mock expect] uppercaseString];
-	
+
 	[mock uppercaseString];
 	[mock lowercaseString];
 }
@@ -498,10 +573,10 @@ static NSString *TestNotification = @"TestNotification";
 {
 	[[mock expect] lowercaseString];
 	[[mock expect] uppercaseString];
-	
+
 	[mock lowercaseString];
 	[mock uppercaseString];
-	
+
 	[mock verify];
 }
 
@@ -510,20 +585,20 @@ static NSString *TestNotification = @"TestNotification";
 {
 	[[mock expect] lowercaseString];
 	[[mock expect] uppercaseString];
-	
+
 	[mock lowercaseString];
-	
-	STAssertThrows([mock verify], @"Should have raised an exception.");
+
+	XCTAssertThrows([mock verify], @"Should have raised an exception.");
 }
 
 - (void)testAcceptsAndVerifiesTwoExpectedInvocationsOfSameMethod
 {
 	[[mock expect] lowercaseString];
 	[[mock expect] lowercaseString];
-	
+
 	[mock lowercaseString];
 	[mock lowercaseString];
-	
+
 	[mock verify];
 }
 
@@ -532,10 +607,10 @@ static NSString *TestNotification = @"TestNotification";
 {
 	[[[mock expect] andReturn:@"foo"] lowercaseString];
 	[[[mock expect] andReturn:@"bar"] lowercaseString];
-	
-	STAssertEqualObjects(@"foo", [mock lowercaseString], @"Should have returned first stubbed value");
-	STAssertEqualObjects(@"bar", [mock lowercaseString], @"Should have returned seconds stubbed value");
-	
+
+	XCTAssertEqualObjects(@"foo", [mock lowercaseString], @"Should have returned first stubbed value");
+	XCTAssertEqualObjects(@"bar", [mock lowercaseString], @"Should have returned seconds stubbed value");
+
 	[mock verify];
 }
 
@@ -543,11 +618,11 @@ static NSString *TestNotification = @"TestNotification";
 {
 	[[mock stub] hasSuffix:@"foo"];
 	[[mock expect] hasSuffix:@"bar"];
-	
+
 	[mock hasSuffix:@"foo"];
 	[mock hasSuffix:@"bar"];
 	[mock hasSuffix:@"foo"]; // Since it's a stub, shouldn't matter how many times we call this
-	
+
 	[mock verify];
 }
 
@@ -560,277 +635,121 @@ static NSString *TestNotification = @"TestNotification";
 
 
 // --------------------------------------------------------------------------------------
+//	verify with delay
+// --------------------------------------------------------------------------------------
+
+- (void)testAcceptsAndVerifiesExpectedMethodsWithDelay
+{
+	[[mock expect] lowercaseString];
+	[[mock expect] uppercaseString];
+    
+	[mock lowercaseString];
+	[mock uppercaseString];
+    
+	[mock verifyWithDelay:1];
+}
+
+- (void)testAcceptsAndVerifiesExpectedMethodsWithDelayBlock
+{
+    dispatch_async(dispatch_queue_create("mockqueue", nil), ^{
+        [NSThread sleepForTimeInterval:0.1];
+        [mock lowercaseString];
+    });
+    
+	[[mock expect] lowercaseString];
+	[mock verifyWithDelay:1];
+}
+
+- (void)testFailsVerifyExpectedMethodsWithoutDelay
+{
+    dispatch_async(dispatch_queue_create("mockqueue", nil), ^{
+        [NSThread sleepForTimeInterval:0.1];
+        [mock lowercaseString];
+    });
+    
+	[[mock expect] lowercaseString];
+	XCTAssertThrows([mock verify], @"Should have raised an exception because method was not called in time.");
+}
+
+- (void)testFailsVerifyExpectedMethodsWithDelay
+{
+	[[mock expect] lowercaseString];
+	XCTAssertThrows([mock verifyWithDelay:0.1], @"Should have raised an exception because method was not called.");
+}
+
+- (void)testAcceptsAndVerifiesExpectedMethodsWithDelayBlockTimeout
+{
+    dispatch_async(dispatch_queue_create("mockqueue", nil), ^{
+        [NSThread sleepForTimeInterval:1];
+        [mock lowercaseString];
+    });
+    
+	[[mock expect] lowercaseString];
+	XCTAssertThrows([mock verifyWithDelay:0.1], @"Should have raised an exception because method was not called.");
+}
+
+// --------------------------------------------------------------------------------------
 //	ordered expectations
 // --------------------------------------------------------------------------------------
 
 - (void)testAcceptsExpectedMethodsInRecordedSequenceWhenOrderMatters
 {
 	[mock setExpectationOrderMatters:YES];
-	
+
 	[[mock expect] lowercaseString];
 	[[mock expect] uppercaseString];
-	
-	STAssertNoThrow([mock lowercaseString], @"Should have accepted expected method in sequence.");
-	STAssertNoThrow([mock uppercaseString], @"Should have accepted expected method in sequence.");
+
+	XCTAssertNoThrow([mock lowercaseString], @"Should have accepted expected method in sequence.");
+	XCTAssertNoThrow([mock uppercaseString], @"Should have accepted expected method in sequence.");
 }
 
 - (void)testRaisesExceptionWhenSequenceIsWrongAndOrderMatters
 {
 	[mock setExpectationOrderMatters:YES];
-	
+
 	[[mock expect] lowercaseString];
 	[[mock expect] uppercaseString];
-	
-	STAssertThrows([mock uppercaseString], @"Should have complained about wrong sequence.");
+
+	XCTAssertThrows([mock uppercaseString], @"Should have complained about wrong sequence.");
 }
 
 
 // --------------------------------------------------------------------------------------
-//	explicitly rejecting methods (mostly for nice mocks, see below)
-// --------------------------------------------------------------------------------------
-
-- (void)testThrowsWhenRejectedMethodIsCalledOnNiceMock
-{
-	mock = [OCMockObject niceMockForClass:[NSString class]];
-	
-	[[mock reject] uppercaseString];
-	STAssertThrows([mock uppercaseString], @"Should have complained about rejected method being called.");
-}
-
-
-// --------------------------------------------------------------------------------------
-//	protocol mocks
-// --------------------------------------------------------------------------------------
-
-- (void)testCanMockFormalProtocol
-{
-	mock = [OCMockObject mockForProtocol:@protocol(NSLocking)];
-	[[mock expect] lock];
-	
-	[mock lock];
-	
-	[mock verify];
-}
-
-- (void)testSetsCorrectNameForProtocolMockObjects
-{
-	mock = [OCMockObject mockForProtocol:@protocol(NSLocking)];
-	STAssertEqualObjects(@"OCMockObject[NSLocking]", [mock description], @"Should have returned correct description.");
-}
-
-- (void)testRaisesWhenUnknownMethodIsCalledOnProtocol
-{
-	mock = [OCMockObject mockForProtocol:@protocol(NSLocking)];
-	STAssertThrows([mock lowercaseString], @"Should have raised an exception.");
-}
-
-- (void)testConformsToMockedProtocol
-{
-	mock = [OCMockObject mockForProtocol:@protocol(NSLocking)];
-	STAssertTrue([mock conformsToProtocol:@protocol(NSLocking)], nil);
-}
-
-- (void)testRespondsToValidProtocolRequiredSelector
-{
-	mock = [OCMockObject mockForProtocol:@protocol(TestProtocol)];	
-    STAssertTrue([mock respondsToSelector:@selector(primitiveValue)], nil);
-}
-
-- (void)testRespondsToValidProtocolOptionalSelector
-{
-	mock = [OCMockObject mockForProtocol:@protocol(TestProtocol)];	
-    STAssertTrue([mock respondsToSelector:@selector(objectValue)], nil);
-}
-
-- (void)testDoesNotRespondToInvalidProtocolSelector
-{
-	mock = [OCMockObject mockForProtocol:@protocol(TestProtocol)];	
-    STAssertFalse([mock respondsToSelector:@selector(fooBar)], nil);
-}
-
-
-// --------------------------------------------------------------------------------------
-//	nice mocks don't complain about unknown methods
+//	nice mocks don't complain about unknown methods, unless told to
 // --------------------------------------------------------------------------------------
 
 - (void)testReturnsDefaultValueWhenUnknownMethodIsCalledOnNiceClassMock
 {
 	mock = [OCMockObject niceMockForClass:[NSString class]];
-	STAssertNil([mock lowercaseString], @"Should return nil on unexpected method call (for nice mock).");	
+	XCTAssertNil([mock lowercaseString], @"Should return nil on unexpected method call (for nice mock).");
 	[mock verify];
 }
 
 - (void)testRaisesAnExceptionWhenAnExpectedMethodIsNotCalledOnNiceClassMock
 {
-	mock = [OCMockObject niceMockForClass:[NSString class]];	
+	mock = [OCMockObject niceMockForClass:[NSString class]];
 	[[[mock expect] andReturn:@"HELLO!"] uppercaseString];
-	STAssertThrows([mock verify], @"Should have raised an exception because method was not called.");
+	XCTAssertThrows([mock verify], @"Should have raised an exception because method was not called.");
 }
 
-- (void)testReturnDefaultValueWhenUnknownMethodIsCalledOnProtocolMock
+- (void)testThrowsWhenRejectedMethodIsCalledOnNiceMock
 {
-	mock = [OCMockObject niceMockForProtocol:@protocol(TestProtocol)];
-	STAssertTrue(0 == [mock primitiveValue], @"Should return 0 on unexpected method call (for nice mock).");
-	[mock verify];
+    mock = [OCMockObject niceMockForClass:[NSString class]];
+
+    [[mock reject] uppercaseString];
+    XCTAssertThrows([mock uppercaseString], @"Should have complained about rejected method being called.");
 }
 
-- (void)testRaisesAnExceptionWenAnExpectedMethodIsNotCalledOnNiceProtocolMock
+- (void)testUncalledRejectStubDoesNotCountAsExpectation
 {
-	mock = [OCMockObject niceMockForProtocol:@protocol(TestProtocol)];	
-	[[mock expect] primitiveValue];
-	STAssertThrows([mock verify], @"Should have raised an exception because method was not called.");
-}
+    mock = [OCMockObject niceMockForClass:[NSString class]];
 
+    [[mock expect] lowercaseString];
+    [[mock reject] uppercaseString];
+    [mock lowercaseString];
 
-// --------------------------------------------------------------------------------------
-//	partial mocks forward unknown methods to a real instance
-// --------------------------------------------------------------------------------------
+    XCTAssertNoThrow([mock verify], @"Should not have any unmet expectations.");
 
-- (void)testStubsMethodsOnPartialMock
-{
-	TestClassThatCallsSelf *foo = [[[TestClassThatCallsSelf alloc] init] autorelease];
-	mock = [OCMockObject partialMockForObject:foo];
-	[[[mock stub] andReturn:@"hi"] method1];
-	STAssertEqualObjects(@"hi", [mock method1], @"Should have returned stubbed value");
-}
-
-
-//- (void)testStubsMethodsOnPartialMockForTollFreeBridgedClasses
-//{
-//	mock = [OCMockObject partialMockForObject:[NSString stringWithString:@"hello"]];
-//	[[[mock stub] andReturn:@"hi"] uppercaseString];
-//	STAssertEqualObjects(@"hi", [mock uppercaseString], @"Should have returned stubbed value");
-//}
-
-- (void)testForwardsUnstubbedMethodsCallsToRealObjectOnPartialMock
-{
-	TestClassThatCallsSelf *foo = [[[TestClassThatCallsSelf alloc] init] autorelease];
-	mock = [OCMockObject partialMockForObject:foo];
-	STAssertEqualObjects(@"Foo", [mock method2], @"Should have returned value from real object.");
-}
-
-//- (void)testForwardsUnstubbedMethodsCallsToRealObjectOnPartialMockForTollFreeBridgedClasses
-//{
-//	mock = [OCMockObject partialMockForObject:[NSString stringWithString:@"hello2"]];
-//	STAssertEqualObjects(@"HELLO2", [mock uppercaseString], @"Should have returned value from real object.");
-//}
-
-- (void)testStubsMethodOnRealObjectReference
-{
-	TestClassThatCallsSelf *realObject = [[[TestClassThatCallsSelf alloc] init] autorelease];
-	mock = [OCMockObject partialMockForObject:realObject];
-	[[[mock stub] andReturn:@"TestFoo"] method1];
-	STAssertEqualObjects(@"TestFoo", [realObject method1], @"Should have stubbed method.");
-}
-
-- (void)testReturnsToRealImplementationWhenExpectedCallOccurred
-{
-    TestClassThatCallsSelf *realObject = [[[TestClassThatCallsSelf alloc] init] autorelease];
-   	mock = [OCMockObject partialMockForObject:realObject];
-   	[[[mock expect] andReturn:@"TestFoo"] method2];
-   	STAssertEqualObjects(@"TestFoo", [realObject method2], @"Should have stubbed method.");
-   	STAssertEqualObjects(@"Foo", [realObject method2], @"Should have 'unstubbed' method.");
-}
-
-- (void)testRestoresObjectWhenStopped
-{
-	TestClassThatCallsSelf *realObject = [[[TestClassThatCallsSelf alloc] init] autorelease];
-	mock = [OCMockObject partialMockForObject:realObject];
-	[[[mock stub] andReturn:@"TestFoo"] method2];
-	STAssertEqualObjects(@"TestFoo", [realObject method2], @"Should have stubbed method.");
-	[mock stopMocking];
-	STAssertEqualObjects(@"Foo", [realObject method2], @"Should have 'unstubbed' method.");
-}
-
-- (void)testCallsToSelfInRealObjectAreShadowedByPartialMock
-{
-	TestClassThatCallsSelf *foo = [[[TestClassThatCallsSelf alloc] init] autorelease];
-	mock = [OCMockObject partialMockForObject:foo];
-	[[[mock stub] andReturn:@"FooFoo"] method2];
-	STAssertEqualObjects(@"FooFoo", [mock method1], @"Should have called through to stubbed method.");
-}
-
-- (NSString *)differentMethodInDifferentClass
-{
-	return @"swizzled!";
-}
-
-- (void)testImplementsMethodSwizzling
-{
-	// using partial mocks and the indirect return value provider
-	TestClassThatCallsSelf *foo = [[[TestClassThatCallsSelf alloc] init] autorelease];
-	mock = [OCMockObject partialMockForObject:foo];
-	[[[mock stub] andCall:@selector(differentMethodInDifferentClass) onObject:self] method1];
-	STAssertEqualObjects(@"swizzled!", [foo method1], @"Should have returned value from different method");
-}
-
-
-- (void)aMethodWithVoidReturn
-{
-}
-
-- (void)testMethodSwizzlingWorksForVoidReturns
-{
-	TestClassThatCallsSelf *foo = [[[TestClassThatCallsSelf alloc] init] autorelease];
-	mock = [OCMockObject partialMockForObject:foo];
-	[[[mock stub] andCall:@selector(aMethodWithVoidReturn) onObject:self] method1];
-	STAssertNoThrow([foo method1], @"Should have worked.");
-}
-
-
-// --------------------------------------------------------------------------------------
-//	class object mocks allow stubbing/expecting on class objects
-// --------------------------------------------------------------------------------------
-
-- (void)testStubsMethodOnClassObject
-{
-    mock = [OCMockObject mockForClassObject:[TestClassWithClassMethod class]];
-    
-	[[[mock stub] andReturn:@"TestFoo"] method1];
-	STAssertEqualObjects(@"TestFoo", [TestClassWithClassMethod method1], @"Should have stubbed method.");
-}
-
-//- (void)testForwardsUnstubbedMethodsToRealClassObjectAfterStopIsCalled
-//{
-//    mock = [OCMockObject mockForClassObject:[TestClassWithClassMethod class]];
-//	[[[mock stub] andReturn:@"TestFoo"] method1];
-//    [mock stopMocking];
-//	STAssertEqualObjects(@"Foo", [TestClassWithClassMethod method1], @"Should not have stubbed method.");
-//}
-
-
-// --------------------------------------------------------------------------------------
-//	mocks should honour the NSObject contract, etc.
-// --------------------------------------------------------------------------------------
-
-- (void)testRespondsToValidSelector
-{
-	STAssertTrue([mock respondsToSelector:@selector(lowercaseString)], nil);
-}
-
-- (void)testDoesNotRespondToInvalidSelector
-{
-	STAssertFalse([mock respondsToSelector:@selector(fooBar)], nil);
-}
-
-- (void)testCanStubValueForKeyMethod
-{
-	id returnValue;
-	
-	mock = [OCMockObject mockForClass:[NSObject class]];
-	[[[mock stub] andReturn:@"SomeValue"] valueForKey:@"SomeKey"];
-	
-	returnValue = [mock valueForKey:@"SomeKey"];
-	
-	STAssertEqualObjects(@"SomeValue", returnValue, @"Should have returned value that was set up.");
-}
-
-- (void)testWorksWithTypeQualifiers
-{
-	id myMock = [OCMockObject mockForProtocol:@protocol(ProtocolWithTypeQualifierMethod)];
-	
-	STAssertNoThrow([[myMock expect] aSpecialMethod:"foo"], @"Should not complain about method with type qualifiers.");
-	STAssertNoThrow([myMock aSpecialMethod:"foo"], @"Should not complain about method with type qualifiers.");
 }
 
 
@@ -848,7 +767,7 @@ static NSString *TestNotification = @"TestNotification";
 	{
 		// expected
 	}
-	STAssertThrows([mock verify], @"Should have reraised the exception.");
+	XCTAssertThrows([mock verify], @"Should have reraised the exception.");
 }
 
 - (void)testReRaisesRejectExceptionsOnVerify
@@ -863,7 +782,7 @@ static NSString *TestNotification = @"TestNotification";
 	{
 		// expected
 	}
-	STAssertThrows([mock verify], @"Should have reraised the exception.");
+	XCTAssertThrows([mock verify], @"Should have reraised the exception.");
 }
 
 
@@ -873,5 +792,6 @@ static NSString *TestNotification = @"TestNotification";
 	[mock lowercaseString];
 	[mock expect];
 }
+
 
 @end
