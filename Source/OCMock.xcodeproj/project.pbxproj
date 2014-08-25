@@ -280,7 +280,7 @@
 		2FA28DEDB9163597B7C49F3D /* NSMethodSignatureOCMAdditionsTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = NSMethodSignatureOCMAdditionsTests.m; sourceTree = "<group>"; };
 		2FA28EC49F6C59B940AE6D00 /* OCMFunctions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OCMFunctions.h; sourceTree = "<group>"; };
 		2FA28EDBF243639C57F88A1B /* OCMArgTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OCMArgTests.m; sourceTree = "<group>"; };
-		D31108AD1828DB8700737925 /* OCMockLibTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OCMockLibTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D31108AD1828DB8700737925 /* OCMock.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OCMock.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D31108B71828DB8700737925 /* OCMockLibTests-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "OCMockLibTests-Info.plist"; sourceTree = "<group>"; };
 		D31108B91828DB8700737925 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		D31108BD1828DB8700737925 /* OCMockLibTests-Prefix.pch */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "OCMockLibTests-Prefix.pch"; sourceTree = "<group>"; };
@@ -342,7 +342,7 @@
 			children = (
 				030EF0A814632FD000B04273 /* OCMock.framework */,
 				030EF0DC14632FF700B04273 /* libOCMock.a */,
-				D31108AD1828DB8700737925 /* OCMockLibTests.xctest */,
+				D31108AD1828DB8700737925 /* OCMock.xctest */,
 				03565A3118F0566E003AE91E /* OCMockTests.xctest */,
 			);
 			name = Products;
@@ -728,7 +728,7 @@
 			);
 			name = OCMockLibTests;
 			productName = OCMockLibTests;
-			productReference = D31108AD1828DB8700737925 /* OCMockLibTests.xctest */;
+			productReference = D31108AD1828DB8700737925 /* OCMock.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
